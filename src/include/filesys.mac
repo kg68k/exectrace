@@ -1,0 +1,170 @@
+.nlist
+
+;filesys.mac - RUKA assembler macro for X680x0/Human68k(v3) by TcbnErik
+;Last-modified: 2024-10-06
+;
+;Copying and distribution of this file, with or without modification,
+;are permitted in any medium without royalty provided the copyright
+;notice and this notice are preserved.  This file is offered as-is,
+;without any warranty.
+
+
+.ifndef __filesys_mac__
+        __filesys_mac__:=1
+
+
+* Drive --------------------------------------- *
+
+.ifndef DRIVE_MAX
+DRIVE_MAX: .equ 26
+.endif
+
+* File Attribute ------------------------------ *
+
+FILEATR_EXEC:      .equ 7  ;execd
+FILEATR_LINK:      .equ 6  ;lndrv
+FILEATR_ARCHIVE:   .equ 5
+FILEATR_DIRECTORY: .equ 4
+FILEATR_VOLUME:    .equ 3
+FILEATR_SYSTEM:    .equ 2
+FILEATR_HIDDEN:    .equ 1
+FILEATR_READONLY:  .equ 0
+
+* File Handle --------------------------------- *
+
+.ifndef STDIN
+STDIN:  .equ 0
+STDOUT: .equ 1
+STDERR: .equ 2
+STDAUX: .equ 3
+STDPRN: .equ 4
+.endif
+
+STD_FILEHANDLE_NUM: .equ 5
+MAX_FILEHANDLE_NUM: .equ 96
+
+* File Open Mode ------------------------------ *
+
+OPENMODE_READ:       .equ 0
+OPENMODE_WRITE:      .equ 1
+OPENMODE_READ_WRITE: .equ 2
+
+* Seek Mode ----------------------------------- *
+
+SEEKMODE_SET:     .equ 0
+SEEKMODE_CURRENT: .equ 1
+SEEKMODE_END:     .equ 2
+
+* Drive Assign Mode --------------------------- *
+
+ASSIGNMD_GET:     .equ 0
+ASSIGNMD_MAKE:    .equ 1
+ASSIGNMD_RELEASE: .equ 4
+
+ASSIGNMODE_REAL_DRIVE:    .equ $40
+ASSIGNMODE_VIRTUAL_DRIVE: .equ $50
+ASSIGNMODE_VIRTUAL_DIR:   .equ $60
+
+* File Control Block -------------------------- *
+
+FCB_CACHE_NUM: .equ 7
+
+.offset 0
+FCB_Link:      .ds.b 1
+FCB_DevAtr:    .ds.b 1
+FCB_Dpb:       .ds.l 1
+FCB_FilePtr:   .ds.l 1
+FCB_Share:     .ds.l 1
+FCB_AxsMode:   .ds.b 1
+FCB_DirEnt:    .ds.b 1
+FCB_CluSector: .ds.b 1
+               .even
+FCB_Cluster:   .ds   1
+FCB_Sector:    .ds.l 1
+FCB_IOBuf:     .ds.l 1
+FCB_DirSecotr: .ds.l 1
+FCB_LastPtr:   .ds.l 1
+FCB_FileName1: .ds.b 8
+FCB_Ext:       .ds.b 3
+FCB_FileAtr:   .ds.b 1
+FCB_FileName2: .ds.b 10
+FCB_LastTime:  .ds   1
+FCB_LastDate:  .ds   1
+FCB_Fat:       .ds   1
+FCB_FileSize:  .ds.l 1
+FCB_FatCache:  .ds.l FCB_CACHE_NUM
+sizeof_FCB:
+.fail $.ne.96
+
+* FILES buffer -------------------------------- *
+
+sizeof_FILES_EX_Path:  .equ 65
+sizeof_FILES_EX_Name1: .equ 8
+sizeof_FILES_EX_Ext:   .equ 3
+sizeof_FILES_EX_Name2: .equ 10
+
+.offset 0
+FILES_SchAtr:   .ds.b 1
+FILES_SchDrv:   .ds.b 1
+FILES_SchSec:   .ds.l 1
+FILES_SchRest:  .ds   1
+FILES_SchOffs:  .ds   1
+FILES_SchName:  .ds.b 8
+FILES_SchExt:   .ds.b 3
+FILES_FileAtr:  .ds.b 1
+FILES_Time:     .ds   1
+FILES_Date:     .ds   1
+FILES_FileSize: .ds.l 1
+FILES_FileName: .ds.b 23
+sizeof_FILES:
+.fail $.ne.53
+.ifdef __RUKA_ENABLE_OBSOLETE_MACRO__
+FILES_Path:
+.endif
+FILES_EX_Drive: .ds.b 2
+FILES_EX_Path:  .ds.b sizeof_FILES_EX_Path
+FILES_EX_Name1: .ds.b sizeof_FILES_EX_Name1
+FILES_EX_Ext:   .ds.b sizeof_FILES_EX_Ext
+FILES_EX_Name2: .ds.b sizeof_FILES_EX_Name2
+sizeof_FILES_EX:
+.fail $.ne.141
+
+* NAMESTS buffer ------------------------------ *
+
+sizeof_NAMESTS_Path:  .equ 65
+sizeof_NAMESTS_Name1: .equ 8
+sizeof_NAMESTS_Ext:   .equ 3
+sizeof_NAMESTS_Name2: .equ 10
+
+.offset 0
+NAMESTS_Wild:  .ds.b 1
+NAMESTS_Drive: .ds.b 1
+NAMESTS_Path:  .ds.b sizeof_NAMESTS_Path
+NAMESTS_Name1: .ds.b sizeof_NAMESTS_Name1
+NAMESTS_Ext:   .ds.b sizeof_NAMESTS_Ext
+NAMESTS_Name2: .ds.b sizeof_NAMESTS_Name2
+sizeof_NAMESTS:
+.fail $.ne.88
+
+* NAMECK buffer ------------------------------- *
+
+sizeof_NAMECK_Drive: .equ 2
+sizeof_NAMECK_Path:  .equ 65
+sizeof_NAMECK_Name:  .equ 19
+sizeof_NAMECK_Ext:   .equ 5
+
+.offset 0
+NAMECK_Drive: .ds.b sizeof_NAMECK_Drive
+NAMECK_Path:  .ds.b sizeof_NAMECK_Path
+NAMECK_Name:  .ds.b sizeof_NAMECK_Name
+NAMECK_Ext:   .ds.b sizeof_NAMECK_Ext
+sizeof_NAMECK:
+.fail $.ne.91
+
+
+.text
+.endif
+
+* End of File --------------------------------- *
+
+.list
