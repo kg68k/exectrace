@@ -20,6 +20,7 @@ USE_HLKX = true
 endif
 
 OBJS = exectrace.o keepchk.o
+DOCS = README.txt CHANGELOG.txt
 
 TARGET = exectrace.r
 DIST_ZIP = exetr.zip
@@ -48,17 +49,17 @@ keepchk.o: keepchk.s
 	$(AS) $(ASFLAGS) -o $@ $<
 
 
-$(DIST_ZIP): README.txt $(TARGET)
+$(DIST_ZIP): $(DOCS) $(TARGET)
 	rm -f $@
 	zip -9 $@ $^
 
-README.txt: $(SRC_DIR)/../README.md
+%.txt: $(SRC_DIR)/../%.md
 	rm -f $@
 	$(U8TOSJ) < $^ > $@
 
 
 clean:
-	rm -f $(DIST_ZIP) README.txt $(TARGET) $(TARGET:.r=.x) $(OBJS)
+	rm -f $(DIST_ZIP) $(DOCS) $(TARGET) $(TARGET:.r=.x) $(OBJS)
 
 
 # EOF
