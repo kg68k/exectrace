@@ -374,7 +374,7 @@ env_mes:      .dc.b LF,'ENV',    TAB,'= $00000000',LF,0
 buffer_mes:   .dc.b LF,'BUFFER', TAB,'= $00000000',0
 
 load_mes:     .dc.b LF,'LOAD',   TAB,'= $00000000',LF,0
-limit_mes:    .dc.b    'LIMIT',  TAB,'= $00000000',LF,0
+limit_mes:    .dc.b    'LIMIT',  TAB,'= $00000000',0
 
 address_mes:  .dc.b LF,'ADDRESS',TAB,'= $00000000',LF,0
 
