@@ -1,7 +1,7 @@
 .title exectrace - trace DOS _EXEC
 
 ;This file is part of exectrace
-;Copyright (C) 2024 TcbnErik
+;Copyright (C) 2025 TcbnErik
 ;
 ;This program is free software: you can redistribute it and/or modify
 ;it under the terms of the GNU General Public License as published by
@@ -27,8 +27,8 @@
 
 
 PROGRAM: .reg 'exectrace'
-VERSION: .reg '1.0.0'
-YEAR:    .reg '2024'
+VERSION: .reg '1.0.1'
+YEAR:    .reg '2025'
 AUTHOR:  .reg 'TcbnErik'
 _TITLE: .reg PROGRAM,' ',VERSION,'  Copyright (C)',YEAR,' ',AUTHOR,'.',CRLF
 
