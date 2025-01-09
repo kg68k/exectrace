@@ -155,7 +155,7 @@ md_3:
   bsr print_file
 
   lea (load_mes,pc),a1
-  lea (8,a1),a0
+  lea (9,a1),a0
   move.l (exec_load,a6),d0
   bsr print_hex8
 
