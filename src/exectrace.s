@@ -27,7 +27,7 @@
 
 
 PROGRAM: .reg 'exectrace'
-VERSION: .reg '1.0.1'
+VERSION: .reg '1.0.2'
 YEAR:    .reg '2025'
 AUTHOR:  .reg 'TcbnErik'
 _TITLE: .reg PROGRAM,' ',VERSION,'  Copyright (C)',YEAR,' ',AUTHOR,'.',CRLF
@@ -43,7 +43,6 @@ exec_load:
 exec_target:  .ds.l 1
 exec_env:
 exec_limit:   .ds.l 1
-exec_env2:    .ds.l 1
 
 
 .offset 0
@@ -163,9 +162,9 @@ md_3:
   lea (9,a1),a0
   move.l (exec_limit,a6),d0
   bsr print_hex8
+  bsr print_newline
 
-  move.l (exec_env2,a6),d0
-  bra print_env2_ret
+  bra print_return_value
 
 md_4:
   lea (address_mes,pc),a1
@@ -183,9 +182,7 @@ md_4:
   movea.l (sp)+,a1
   addq.l #1,a1  ;文字列長を飛ばす
   bsr print_str
-
-  lea (newline,pc),a1
-  bsr print_str
+  bsr print_newline
 
   bra print_return_value
 
@@ -199,13 +196,11 @@ md_5:
   movea.l (exec_target,a6),a1
   bsr print_str
 unknown_mode:
-  lea (newline,pc),a1
-  bsr print_str
+  bsr print_newline
   bra print_return_value
 
 print_env_ret:
   move.l (exec_env,a6),d0
-print_env2_ret:
   lea (env_mes,pc),a1
   lea (8,a1),a0
   bsr print_hex8
@@ -249,6 +244,10 @@ print_hex:
     and d0,d2
     move.b (hextable,pc,d2.w),(a0)+
   dbra d1,@b
+  bra print_str
+
+print_newline:
+  lea (newline,pc),a1
   bra print_str
 
 print_str:
