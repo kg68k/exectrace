@@ -27,14 +27,16 @@
 
 
 PROGRAM: .reg 'exectrace'
-VERSION: .reg '1.0.2'
+VERSION: .reg '1.1.0-beta.1'
 YEAR:    .reg '2025'
 AUTHOR:  .reg 'TcbnErik'
-_TITLE: .reg PROGRAM,' ',VERSION,'  Copyright (C)',YEAR,' ',AUTHOR,'.',CRLF
+_TITLE:  .reg PROGRAM,' ',VERSION,'  Copyright (C)',YEAR,' ',AUTHOR,'.',CR,LF
 
 
 .offset 0
-exec_md:      .ds.w 1
+exec_md:
+exec_module:  .ds.b 1
+exec_mode:    .ds.b 1
 exec_file:
 exec_address: .ds.l 1
 exec_cmdline:
@@ -96,123 +98,14 @@ new_dos_exec:
   bsr open_logfile
   bne open_logfile_error
 
-  move.l (exec_md,a6),d0  ;module+mode を表示
-  lea (md_mes,pc),a1
-  lea (7,a1),a0
-  moveq #4-1,d1
-  bsr print_hex
+  bsr output_md
+  bsr output_each_mode
 
-  moveq #0,d1
-  move.b (exec_md+1,a6),d1
-  cmpi #5,d1
-  bhi unknown_mode  ;mode>=6ならモードと返値だけ表示
-
-  add d1,d1
-  move d1,-(sp)
-  lea (md_mes_table,pc,d1.w),a1
-  adda (a1),a1
-  bsr print_str
-
-  move (sp)+,d1
-  move (md_table,pc,d1.w),d1
-  jmp (md_table,pc,d1.w)
-
-md_mes_table:
-  .irpc %MD,012345
-    .dc md_mes_%MD-$
-  .endm
-md_table:
-  .irpc %MD,012345
-    .dc md_%MD-md_table
-  .endm
-
-md_0:
-md_1:
-  bsr print_file
-
-  lea (cmdline_mes,pc),a1
-  lea (12,a1),a0
-  move.l (exec_cmdline,a6),d0
-  bsr print_hex8
-  movea.l (exec_cmdline,a6),a1
-  addq.l #1,a1  ;文字列長を飛ばす
-  bsr print_str
-
-  bra print_env_ret
-
-md_2:
-  bsr print_file
-
-  lea (buffer_mes,pc),a1
-  lea (11,a1),a0
-  move.l (exec_buffer,a6),d0
-  bsr print_hex8
-
-  bra print_env_ret
-
-md_3:
-  bsr print_file
-
-  lea (load_mes,pc),a1
-  lea (9,a1),a0
-  move.l (exec_load,a6),d0
-  bsr print_hex8
-
-  lea (limit_mes,pc),a1
-  lea (9,a1),a0
-  move.l (exec_limit,a6),d0
-  bsr print_hex8
-  bsr print_newline
-
-  bra print_return_value
-
-md_4:
-  lea (address_mes,pc),a1
-  lea (12,a1),a0
-  move.l (exec_address,a6),d0
-  bsr print_hex8
-
-  movea.l ($1c28),a0  ;PSP 格納ワークへのポインタ
-  movea.l (a0),a0     ;PSP
-  move.l ($20,a0),d0  ;コマンドラインのアドレス
-  lea (cmdline_mes2,pc),a1
-  lea (12-1,a1),a0
-  move.l d0,-(sp)
-  bsr print_hex8
-  movea.l (sp)+,a1
-  addq.l #1,a1  ;文字列長を飛ばす
-  bsr print_str
-  bsr print_newline
-
-  bra print_return_value
-
-md_5:
-  bsr print_file
-
-  lea (target_mes,pc),a1
-  lea (10,a1),a0
-  move.l (exec_target,a6),d0
-  bsr print_hex8
-  movea.l (exec_target,a6),a1
-  bsr print_str
-unknown_mode:
-  bsr print_newline
-  bra print_return_value
-
-print_env_ret:
-  move.l (exec_env,a6),d0
-  lea (env_mes,pc),a1
-  lea (8,a1),a0
-  bsr print_hex8
-print_return_value:
   POP usereg
   bsr call_dos_exec_orig
   PUSH usereg
 
-  lea (ret_mes,pc),a1
-  lea (7,a1),a0
-  bsr print_hex8
-
+  bsr output_return_value
   bsr close_logfile
   POP usereg
   rts
@@ -224,89 +117,279 @@ call_dos_exec_orig:
   move.l (old_vec,pc),-(sp)
   rts
 
-print_file:
-  lea (file_mes,pc),a1
-  lea (9,a1),a0
+
+;DOSコールの返り値を表示する
+output_return_value:
+  lea (text_buffer,pc),a1
+  lea (return_mes,pc),a0
+  STRCPY a0,a1,-1
+  bsr write_hex8
+  bsr write_newline
+  bra print_buffer
+
+
+;MD (MODULE + MODE)引数を表示する
+output_md:
+  lea (text_buffer,pc),a1
+  bsr write_newline
+  lea (md_mes,pc),a0
+  STRCPY a0,a1,-1
+  move (exec_md,a6),d0
+  bsr write_hex4
+
+  moveq #0,d0
+  move.b (exec_mode,a6),d0
+  cmpi #EXECMODE_BINDNO,d0
+  bls @f
+    moveq #EXECMODE_BINDNO+1,d0  ;mode > 5 なら未定義のモード
+  @@:
+  lea (md_mes_table,pc),a0
+  move.b (a0,d0.w),d0
+  adda.l d0,a0
+  STRCPY a0,a1,-1
+
+  bsr write_newline
+  bra print_buffer
+
+
+;MODE ごとの処理に振り分ける
+output_each_mode:
+  moveq #0,d0
+  move.b (exec_mode,a6),d0
+  cmpi #EXECMODE_BINDNO,d0
+  bhi 9f
+
+  add d0,d0
+  lea (text_buffer,pc),a1
+  jsr (output_each_mode_table,pc,d0.w)
+
+  lea (text_buffer,pc),a0
+  cmpa.l a0,a1
+  bne print_buffer  ;最後の行の改行を表示していなければ表示する
+9:
+  rts
+
+output_each_mode_table:
+  bra.s output_md0
+  bra.s output_md1
+  bra.s output_md2
+  bra.s output_md3
+  bra.s output_md4
+  bra   output_md5
+
+output_md0:
+output_md1:
+  bsr output_file
+  bsr output_cmdline
+  bra output_envptr
+
+output_md2:
+  bsr output_file
+  bsr output_buffer
+  bra output_envptr
+
+output_md3:
+  bsr output_file
+  bsr output_loadadr
+  bra output_limit
+
+output_md4:
+  bsr output_execadr
+  bra output_cmdline2
+
+output_md5:
+  bsr output_file
+  bra output_file2
+
+
+;FILE 引数を表示する(末尾改行なし)
+;in a1.l バッファ
+;out a1.l 改行を書き込んだバッファ
+output_file:
+  lea (file_mes,pc),a0
+  STRCPY a0,a1,-1
   move.l (exec_file,a6),d0
-  bsr print_hex8
+  bsr write_hex8
+  bsr write_separator
+  bsr print_buffer
+
   movea.l (exec_file,a6),a1
-  bra print_str
+  bsr print_a1
 
-hextable: .dc.b '0123456789abcdef'
-.even
+  bra write_newline
 
-print_hex8:
+
+;FILE2 引数を表示する(末尾改行なし)
+;in a1.l バッファ
+;out a1.l 改行を書き込んだバッファ
+output_file2:
+  lea (file2_mes,pc),a0
+  STRCPY a0,a1,-1
+  move.l (exec_target,a6),d0
+  bsr write_hex8
+  bsr write_separator
+  bsr print_buffer
+
+  movea.l (exec_target,a6),a1
+  bsr print_a1
+
+  bra write_newline
+
+
+;CMDLINE 引数を表示する(末尾改行なし)
+;in a1.l バッファ
+;out a1.l 改行を書き込んだバッファ
+output_cmdline:
+  lea (cmdline_mes,pc),a0
+  STRCPY a0,a1,-1
+  move.l (exec_cmdline,a6),d0
+  bsr write_hex8
+  bsr write_separator
+  bsr print_buffer
+
+  movea.l (exec_cmdline,a6),a1
+  addq.l #1,a1  ;文字列長を飛ばす
+  bsr print_a1
+
+  bra write_newline
+
+
+;CMDLINE の値を表示する(末尾改行なし)
+;  DOS コールの引数としては渡されないが、表示された方が分かりやすいので
+;  PSP 内の値を取得して表示する。
+;in a1.l バッファ
+;out a1.l 改行を書き込んだバッファ
+output_cmdline2:
+  lea (cmdline_mes,pc),a0
+  STRCPY a0,a1,-1
+  movea.l ($1c28),a0  ;PSP 格納ワークへのポインタ
+  movea.l (a0),a0     ;PSP
+  move.l ($20,a0),d0  ;コマンドラインのアドレス
+  move.l d0,-(sp)
+
+  bsr write_hex8
+  bsr write_separator
+  bsr print_buffer
+
+  movea.l (sp)+,a1
+  addq.l #1,a1  ;文字列長を飛ばす
+  bsr print_a1
+
+  bra write_newline
+
+
+;ENVPTR 引数を表示する
+;in a1.l バッファ
+;out a1.l バッファ先頭
+output_envptr:
+  lea (env_mes,pc),a0
+  STRCPY a0,a1,-1
+  move.l (exec_env,a6),d0
+  bsr write_hex8
+  bsr write_newline
+  bra print_buffer
+
+
+;BUFFER 引数を表示する
+;  正式には CMDLINE だが出力バッファのため BUFFER としている。
+;in a1.l バッファ
+;out a1.l バッファ先頭
+output_buffer:
+  lea (buffer_mes,pc),a0
+  STRCPY a0,a1,-1
+  move.l (exec_buffer,a6),d0
+  bsr write_hex8
+  bsr write_newline
+  bra print_buffer
+
+
+;LOADADR 引数を表示する
+;in a1.l バッファ
+;out a1.l バッファ先頭
+output_loadadr:
+  lea (loadadr_mes,pc),a0
+  STRCPY a0,a1,-1
+  move.l (exec_load,a6),d0
+  bsr write_hex8
+  bsr write_newline
+  bra print_buffer
+
+
+;LOADADR 引数を表示する
+;in a1.l バッファ
+;out a1.l バッファ先頭
+output_limit:
+  lea (limit_mes,pc),a0
+  STRCPY a0,a1,-1
+  move.l (exec_limit,a6),d0
+  bsr write_hex8
+  bsr write_newline
+  bra print_buffer
+
+
+;EXECADR 引数を表示する
+;in a1.l バッファ
+;out a1.l バッファ先頭
+output_execadr:
+  lea (execadr_mes,pc),a0
+  STRCPY a0,a1,-1
+  bsr write_hex8
+  bsr write_newline
+  bra print_buffer
+
+
+write_newline:
+  move.b (filename_buf,pc),d0
+  bne @f
+    move.b #CR,(a1)+
+  @@:
+  move.b #LF,(a1)+
+  clr.b (a1)
+  rts
+
+write_separator:
+  move.b #':',(a1)+
+  move.b #' ',(a1)+
+  clr.b (a1)
+  rts
+
+write_hex4:
+  swap d0
+  moveq #4-1,d1
+  bra @f
+write_hex8:
   moveq #8-1,d1
-print_hex:
   @@:
     rol.l #4,d0
     moveq #$f,d2
     and d0,d2
-    move.b (hextable,pc,d2.w),(a0)+
+    move.b (hextable,pc,d2.w),(a1)+
   dbra d1,@b
-  bra print_str
+  clr.b (a1)
+  rts
 
-print_newline:
-  lea (newline,pc),a1
-  bra print_str
+hextable: .dc.b '0123456789abcdef'
+.even
 
-print_str:
+
+print_buffer:
+  lea (text_buffer,pc),a1
+print_a1:
   move.b (filename_buf,pc),d0
-  beq print_str_console
-
-  PUSH_A6
-  move (fileno,pc),-(sp)
-  move.l a1,-(sp)
-  DOS_ _FPUTS
-  addq.l #6,sp
-  POP_A6
+  beq @f
+    PUSH_A6
+    move (fileno,pc),-(sp)
+    pea (a1)
+    DOS_ _FPUTS
+    addq.l #6,sp
+    POP_A6
+    bra 9f
+  @@:
+    IOCS_ _B_PRINT
+  9:
+  lea (text_buffer,pc),a1
   rts
 
-print_str_console:
-  .ifdef __CRLF__
-    cmpi.b #LF,(a1)
-    bne @f
-      addq.l #1,a1  ;先頭のLFは代わりにCRLFを表示する
-      bsr print_crlf
-    @@:
-
-    move.l a1,d1
-    @@:
-      move.b (a1)+,d0
-      beq @f
-      cmpi.b #LF,d0
-      bne @b
-    @@:
-    movea.l d1,a1
-    tst.b d0
-    bne print_str_con_lf  ;文字列内にLFがあれば特別に処理する
-  .endif
-
-  IOCS_ _B_PRINT
-  rts
-
-.ifdef __CRLF__
-print_crlf:
-  move.l a1,d1
-  lea (crlf,pc),a1
-  IOCS _B_PRINT
-  movea.l d1,a1
-  rts
-
-@@:
-  bsr print_crlf
-print_str_con_lf:
-  moveq #0,d1
-  bra 2f
-  1:
-    cmpi #LF,d1
-    beq @b
-    IOCS_ _B_PUTC
-  2:
-  move.b (a1)+,d1
-  bne 1b
-  rts
-.endif
 
 open_logfile:
   lea (filename_buf,pc),a1
@@ -352,43 +435,46 @@ close_logfile_ok:
   rts
 
 
+* 常駐部 バッファ ----------------------------- *
+
+text_buffer: .ds.b 96
+
+
 * 常駐部 データ ------------------------------- *
 
-md_mes: .dc.b LF,'MD',TAB,'= $0000',0
+HEADER_A: .reg '┌ '  ;先頭行のヘッダー
+HEADER_B: .reg '│ '  ;中間行のヘッダー
+HEADER_C: .reg '└ '  ;末尾行のヘッダー
 
-md_mes_0: .dc.b '(loadexec)',0
-md_mes_1: .dc.b '(load)',0
-md_mes_2: .dc.b '(pathchk)',0
-md_mes_3: .dc.b '(loadonly)',0
-md_mes_4: .dc.b '(execonly)',0
-md_mes_5: .dc.b '(bindno)',0
+md_mes:      .dc.b HEADER_A,'MD = $',0
+file_mes:    .dc.b HEADER_B,'FILE = $',0
+file2_mes:   .dc.b HEADER_B,'FILE2 = $',0
+cmdline_mes: .dc.b HEADER_B,'CMDLINE = $',0
+buffer_mes:  .dc.b HEADER_B,'BUFFER = $',0
+env_mes:     .dc.b HEADER_B,'ENV = $',0
+loadadr_mes: .dc.b HEADER_B,'LOADADR = $',0
+limit_mes:   .dc.b HEADER_B,'LIMIT = $',0
+execadr_mes: .dc.b HEADER_B,'EXECADR = $',0
+return_mes:  .dc.b HEADER_C,'d0.l = $',0
 
-file_mes:     .dc.b LF,'FILE',   TAB,'= $00000000 : ',0
+md_mes_table:
+  .irpc %MD,012345u
+    .dc.b md_mes_%MD-md_mes_table
+  .endm
 
-cmdline_mes:  .dc.b LF
-cmdline_mes2: .dc.b    'CMDLINE',TAB,'= $00000000 : ',0
-
-env_mes:      .dc.b LF,'ENV',    TAB,'= $00000000',LF,0
-
-buffer_mes:   .dc.b LF,'BUFFER', TAB,'= $00000000',0
-
-load_mes:     .dc.b LF,'LOAD',   TAB,'= $00000000',LF,0
-limit_mes:    .dc.b    'LIMIT',  TAB,'= $00000000',0
-
-address_mes:  .dc.b LF,'ADDRESS',TAB,'= $00000000',LF,0
-
-target_mes:   .dc.b    'TARGET', TAB,'= $00000000 : ',0
-
-ret_mes:      .dc.b    'RET',    TAB,'= $00000000',LF,0
-
-crlf:         .dc.b CR
-newline:      .dc.b LF,0
-
-.even
-keep_size: .equ $-__main
+md_mes_0: .dc.b ' (loadexec)',0
+md_mes_1: .dc.b ' (load)',0
+md_mes_2: .dc.b ' (pathchk)',0
+md_mes_3: .dc.b ' (loadonly)',0
+md_mes_4: .dc.b ' (execonly)',0
+md_mes_5: .dc.b ' (bindno)',0
+md_mes_u: .dc.b ' (???)',0
 
 
 * 非常駐部 ------------------------------------ *
+
+.even
+keep_size: .equ $-__main
 
 _main:
   moveq #0,d6  ;0=ファイル無指定 1=指定あり -1=-r
@@ -548,61 +634,26 @@ print_title:
 .data
 
 usage_mes:
-  .dc.b 'usage: exectrace [-r] [logfile]',CRLF,0
+  .dc.b 'usage: exectrace [-r] [logfile]',CR,LF,0
 progname:
   .dc.b 'exectrace: ',0
 too_long_mes:
-  .dc.b 'ファイル名が長すぎます。',CRLF,0
+  .dc.b 'ファイル名が長すぎます。',CR,LF,0
 
 keep_mes:
-  .dc.b '常駐しました。',CRLF,0
+  .dc.b '常駐しました。',CR,LF,0
 already_keeped_mes
-  .dc.b '既に常駐しています。',CRLF,0
+  .dc.b '既に常駐しています。',CR,LF,0
 
 released_mes:
-  .dc.b '常駐解除しました。',CRLF,0
+  .dc.b '常駐解除しました。',CR,LF,0
 overhooked_mes:
-  .dc.b 'ベクタが書き換えられています。',CRLF,0
+  .dc.b 'ベクタが書き換えられています。',CR,LF,0
 not_keeped_mes:
-  .dc.b '常駐していません。',CRLF,0
+  .dc.b '常駐していません。',CR,LF,0
 
 fopen_error_mes:
-  .dc.b 'ログファイルがオープン出来ません。',CRLF,0
+  .dc.b 'ログファイルがオープンできません。',CR,LF,0
 
 
 .end __main
-
-* End of Source ------------------------------- *
-
-
-MD = 0,1
-FILE = $???????? : foo.x
-CMDLINE = $???????? : bar
-ENV = $????????
-RET = $????????
-
-MD = 2
-FILE = $???????? : foo.x
-BUFFER = $????????
-ENV = $????????
-RET = $????????
-
-MD = 3
-FILE = $???????? : foo.x
-LOAD = $????????
-LIMIT = $????????
-ENV = $????????
-RET = $????????
-
-MD = 4
-ADDRESS = $????????
-CMDLINE = $???????? : bar (引数には無いが表示した方が便利)
-RET = $????????
-
-MD = 5
-FILE = $???????? : foo.x
-TARGET = $???????? : bar.x
-RET = $????????
-
-
-* End of File --------------------------------- *

@@ -10,7 +10,7 @@ SRC_DIR = ../src
 
 U8TOSJ = u8tosj
 AS = has060
-ASFLAGS = -w2 -c3 -i./include -s__CRLF__
+ASFLAGS = -w2 -c3 -i./include
 LD ?= hlkx
 LDFLAGS =
 CV = cv
