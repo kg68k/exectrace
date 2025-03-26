@@ -49,8 +49,6 @@ exec_limit:   .ds.l 1
 
 .offset 0
   .dc.b _TITLE,0
-titlelen:
-filename_buf: .equ __title+titlelen
 .text
 
 
@@ -88,7 +86,6 @@ usereg: .reg d0-d7/a0-a6
 
 .text
 .quad
-filename_bufend:
 
 old_vec: .dc.l 0
 fileno:  .dc.w 0
@@ -96,7 +93,7 @@ fileno:  .dc.w 0
 new_dos_exec:
   PUSH usereg
   bsr open_logfile
-  bne open_logfile_error
+  bmi open_logfile_error
 
   bsr output_md
   bsr output_each_mode
@@ -111,7 +108,6 @@ new_dos_exec:
   rts
 
 open_logfile_error:
-  bsr close_logfile
   POP usereg
 call_dos_exec_orig:
   move.l (old_vec,pc),-(sp)
@@ -339,7 +335,7 @@ output_execadr:
 
 
 write_newline:
-  move.b (filename_buf,pc),d0
+  move.b (log_filename,pc),d0
   bne @f
     move.b #CR,(a1)+
   @@:
@@ -375,7 +371,7 @@ hextable: .dc.b '0123456789abcdef'
 print_buffer:
   lea (text_buffer,pc),a1
 print_a1:
-  move.b (filename_buf,pc),d0
+  move.b (log_filename,pc),d0
   beq @f
     PUSH_A6
     move (fileno,pc),-(sp)
@@ -392,52 +388,48 @@ print_a1:
 
 
 open_logfile:
-  lea (filename_buf,pc),a1
-  tst.b (a1)
-  beq open_logfile_ok
-
-  PUSH_A6
-  move #OPENMODE_WRITE,-(sp)
-  move.l a1,-(sp)
-  DOS_ _OPEN
-  addq.l #6,sp
-  POP_A6
-  lea (fileno,pc),a1
-  move d0,(a1)
-  bmi @f
-
-  PUSH_A6
-  move #SEEKMODE_END,-(sp)
-  clr.l -(sp)
-  move d0,-(sp)
-  DOS_ _SEEK
-  addq.l #8,sp
-  POP_A6
-  tst.l d0
-  bmi @f
-open_logfile_ok:
   moveq #0,d0
-@@:
+  move.b (log_filename,pc),d0
+  beq 9f
+    PUSH_A6
+    move #OPENMODE_WRITE,-(sp)
+    pea (log_filename,pc)
+    DOS_ _OPEN
+    addq.l #6,sp
+    POP_A6
+    lea (fileno,pc),a1
+    move d0,(a1)
+    bmi 9f
+      PUSH_A6
+      move #SEEKMODE_END,-(sp)
+      clr.l -(sp)
+      move d0,-(sp)
+      DOS_ _SEEK
+      addq.l #8,sp
+      POP_A6
+  9:
+  tst.l d0
   rts
 
 close_logfile:
-  move.b (filename_buf,pc),d0
-  beq close_logfile_ok
-
-  PUSH_A6
-  move (fileno,pc),-(sp)
-  bmi @f
-  DOS_ _CLOSE
-@@:
-  addq.l #2,sp
-  POP_A6
-close_logfile_ok:
+  move.b (log_filename,pc),d0
+  beq 9f
+    PUSH_A6
+    move (fileno,pc),-(sp)
+    bmi @f
+      DOS_ _CLOSE
+    @@:
+    addq.l #2,sp
+    POP_A6
+  9:
   rts
 
 
 * 常駐部 バッファ ----------------------------- *
 
 text_buffer: .ds.b 96
+
+log_filename: .ds.b sizeof_NAMECK
 
 
 * 常駐部 データ ------------------------------- *
@@ -477,48 +469,30 @@ md_mes_u: .dc.b ' (???)',0
 keep_size: .equ $-__main
 
 _main:
-  moveq #0,d6  ;0=ファイル無指定 1=指定あり -1=-r
-  lea (filename_buf,pc),a1
-  move.b d6,(a1)
-get_argument_next:
-  dbra d7,argument_loop
+  moveq #0,d6  ;0:常駐 $ff:常駐解除
+  suba.l a5,a5  ;ログファイル名
+  bsr analyze_arguments
 
   lea (__main-$100,pc),a0
   lea (__title,pc),a1
   bsr keepchk
-  tst d6
-  bmi release
+  tst.b d6
+  bne release
 
   tst.l d0
   beq already_keeped
 
-  ;logfile をオープンする
-  tst d6
-  beq opentest_skip  ;consoleに出力
-
-  move #1<<FILEATR_ARCHIVE,-(sp)
-  pea (filename_buf,pc)
-  DOS _NEWFILE  ;新規作成
-  tst.l d0
-  bpl opentest_ok
-
-  move #OPENMODE_WRITE,(4,sp)
-  DOS _OPEN  ;既に存在する場合は書き込みオープン
-  tst.l d0
-  bpl opentest_ok
-
-  pea (fopen_error_mes,pc)
-  bra print_exit_error
-
-opentest_ok:
-  addq.l #6,sp
-  DOS _ALLCLOSE
-opentest_skip:
+  move.l a5,d0
+  beq @f  ;ログファイル無指定ならコンソールに出力
+    lea (a5),a0
+    lea (log_filename,pc),a1
+    bsr try_open_logfile
+    bmi file_open_error
+  @@:
   pea (new_dos_exec,pc)
   move #_EXEC,-(sp)
   DOS _INTVCS
   addq.l #6,sp
-
   lea (old_vec,pc),a1
   move.l d0,(a1)
 
@@ -530,10 +504,6 @@ opentest_skip:
   pea (keep_size).w
   DOS _KEEPPR
 
-already_keeped:
-  bsr print_progname
-  pea (already_keeped_mes,pc)
-  bra print_exit_error
 
 release:
   tst.l d0
@@ -561,62 +531,88 @@ release:
   DOS _PRINT
   DOS _EXIT
 
-overhooked:
-  bsr print_progname
-  pea (overhooked_mes,pc)
-  bra print_exit_error
-not_keeped:
-  bsr print_progname
-  pea (not_keeped_mes,pc)
-  bra print_exit_error
 
-argument_loop:
-  move.b (a0)+,d1
+try_open_logfile:
+  bsr to_fullpath
+  bmi 9f
+    move #1<<FILEATR_ARCHIVE,-(sp)
+    pea (a1)  ;フルパス化したファイル名
+    DOS _NEWFILE  ;新規作成
+    addq.l #6,sp
+    tst.l d0
+    bpl @f
+      move #OPENMODE_WRITE,-(sp)
+      pea (a1)
+      DOS _OPEN  ;既に存在する場合は書き込みオープン
+      addq.l #6,sp
+      tst.l d0
+      bmi 9f
+    @@:
+    move d0,-(sp)
+    DOS _CLOSE
+    addq.l #2,sp
+    tst.l d0
+  9:
+  rts
 
-  cmpi.b #'-',d1
-  beq check_option
+to_fullpath:
+  PUSH a0-a2
+  pea (a1)  ;バッファ
+  pea (a0)  ;ファイル名
+  DOS _NAMECK
+  addq.l #8,sp
+  tst.l d0
+  bmi 9f
+    ;ドライブ名+パス名の後ろにファイル名と拡張子を繋げる
+    lea (NAMECK_Drive,a1),a2
+    STREND a2
+    lea (NAMECK_Name,a1),a0
+    STRCPY a0,a2,-1
+    lea (NAMECK_Ext,a1),a0
+    STRCPY a0,a2
+    moveq #0,d0
+  9:
+  POP a0-a2
+  rts
 
-  tst d6
-  bne print_usage
-  moveq #1,d6  ;ファイル指定あり
 
-  subq.l #1,a0
-  ;lea (filename_buf,pc),a1
-  moveq #filename_bufend-filename_buf-1,d0
-@@:
-  move.b (a0)+,(a1)+
-  dbeq d0,@b
-  beq get_argument_next
+analyze_arguments:
+  bra analyze_arg_next
+  analyze_arg_loop:
+    move.b (a0)+,d0
+    beq analyze_arg_next
+    cmpi.b #'-',d0
+    beq @f
+      subq.l #1,a0
+      move.l a5,d0
+      bne print_usage  ;すでにファイル名が指定されている
+      lea (a0),a5
+      STREND a0,+1
+      bra analyze_arg_next
+    @@:
+    moveq #$20,d0
+    or.b (a0)+,d0
+    cmpi.b #'v',d0
+    beq print_version
+    cmpi.b #'r',d0
+    bne print_usage
+      tst.b (a0)+
+      bne print_usage
+        st d6  ;-r 常駐解除
+  analyze_arg_next:
+  dbra d7,analyze_arg_loop
+  rts
 
-  bsr print_progname
-  pea (too_long_mes,pc)
-  bra print_exit_error
 
-check_option:
-  moveq #-1,d6  ;-r
-
-  move.b (a0)+,d1
-  beq print_usage
-  ori.b #$20,d1
-  cmpi.b #'v',d1
-  beq print_proginfo
-
-  tst.b (a0)+
-  bne print_usage
-  cmpi.b #'r',d1
-  beq get_argument_next
 print_usage:
   bsr print_title
   pea (usage_mes,pc)
-print_exit_error:
   DOS _PRINT
-  move #EXIT_FAILURE,(sp)
   DOS _EXIT
 
-print_proginfo:
+print_version:
   bsr print_title
   DOS _EXIT
-
 
 print_progname:
   pea (progname,pc)
@@ -628,6 +624,24 @@ print_title:
   addq.l #4,sp
   rts
 
+already_keeped:
+  lea (already_keeped_mes,pc),a0
+  bra @f
+file_open_error:
+  lea (fopen_error_mes,pc),a0
+  bra @f
+overhooked:
+  lea (overhooked_mes,pc),a0
+  bra @f
+not_keeped:
+  lea (not_keeped_mes,pc),a0
+@@:
+  bsr print_progname
+  pea (a0)
+  DOS _PRINT
+  move #EXIT_FAILURE,(sp)
+  DOS _EXIT
+
 
 * Data Section -------------------------------- *
 
@@ -637,8 +651,6 @@ usage_mes:
   .dc.b 'usage: exectrace [-r] [logfile]',CR,LF,0
 progname:
   .dc.b 'exectrace: ',0
-too_long_mes:
-  .dc.b 'ファイル名が長すぎます。',CR,LF,0
 
 keep_mes:
   .dc.b '常駐しました。',CR,LF,0
