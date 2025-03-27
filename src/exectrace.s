@@ -16,21 +16,20 @@
 ;You should have received a copy of the GNU General Public License
 ;along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+PROGRAM: .reg 'exectrace'
+VERSION: .reg '1.1.0'
+YEAR:    .reg '2025'
+
+
 .include macro.mac
 .include dosdef.mac
 .include console.mac
 .include doscall.mac
 .include filesys.mac
+.include process.mac
 .include iocscall.mac
 
-.xref keepchk
-
-
-PROGRAM: .reg 'exectrace'
-VERSION: .reg '1.1.0-beta.1'
-YEAR:    .reg '2025'
-AUTHOR:  .reg 'TcbnErik'
-_TITLE:  .reg PROGRAM,' ',VERSION,'  Copyright (C)',YEAR,' ',AUTHOR,'.',CR,LF
+.xref keepchk,Initialize
 
 
 .offset 0
@@ -45,11 +44,6 @@ exec_load:
 exec_target:  .ds.l 1
 exec_env:
 exec_limit:   .ds.l 1
-
-
-.offset 0
-  .dc.b _TITLE,0
-.text
 
 
 * Macro --------------------------------------- *
@@ -76,19 +70,22 @@ POP_A6: .macro
 
 * Text Section -------------------------------- *
 
-_IGNORE_NUL_ARG:
-.include startup.s
+.text
+
+Start:
+  bra.s @f
+  .dc.b '#HUPAIR',0
+title:
+  .dc.b PROGRAM,' ',VERSION
+  .dc.b '  Copyright (C)',YEAR,' TcbnErik.',CR,LF,0
+  .even
+@@:
+  bra Start2
 
 
 * 常駐部 プログラム --------------------------- *
 
 usereg: .reg d0-d7/a0-a6
-
-.text
-.quad
-
-old_vec: .dc.l 0
-fileno:  .dc.w 0
 
 new_dos_exec:
   PUSH usereg
@@ -427,6 +424,9 @@ close_logfile:
 
 * 常駐部 バッファ ----------------------------- *
 
+old_vec: .dc.l 0
+fileno:  .dc.w 0
+
 text_buffer: .ds.b 96
 
 log_filename: .ds.b sizeof_NAMECK
@@ -466,15 +466,15 @@ md_mes_u: .dc.b ' (???)',0
 * 非常駐部 ------------------------------------ *
 
 .even
-keep_size: .equ $-__main
+Start2:
+  bsr Initialize
 
-_main:
   moveq #0,d6  ;0:常駐 $ff:常駐解除
   suba.l a5,a5  ;ログファイル名
   bsr analyze_arguments
 
-  lea (__main-$100,pc),a0
-  lea (__title,pc),a1
+  lea (Start-$100,pc),a0
+  lea (title,pc),a1
   bsr keepchk
   tst.b d6
   bne release
@@ -501,7 +501,7 @@ _main:
   DOS _PRINT
 
   clr -(sp)
-  pea (keep_size).w
+  pea (Start2-Start).w
   DOS _KEEPPR
 
 
@@ -509,14 +509,14 @@ release:
   tst.l d0
   bmi not_keeped
 
-  pea (16,a0)  ;DOS _MFREE 用
-  lea ($100,a0),a0  ;= __main
+  pea (sizeof_MEMBLK,a0)  ;DOS _MFREE 用
+  lea (sizeof_PSP,a0),a0
 
-  move.l (old_vec-__main,a0),-(sp)
+  move.l (old_vec-Start,a0),-(sp)
   move #_EXEC,-(sp)
   DOS _INTVCG
 
-  lea (new_dos_exec-__main,a0),a1
+  lea (new_dos_exec-Start,a0),a1
   cmp.l a1,d0
   bne overhooked
 
@@ -618,7 +618,7 @@ print_progname:
   pea (progname,pc)
   bra @f
 print_title:
-  pea (__title,pc)
+  pea (title,pc)
 @@:
   DOS _PRINT
   addq.l #4,sp
@@ -668,4 +668,4 @@ fopen_error_mes:
   .dc.b 'ログファイルがオープンできません。',CR,LF,0
 
 
-.end __main
+.end Start

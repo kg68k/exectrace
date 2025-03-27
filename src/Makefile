@@ -11,7 +11,7 @@ SRC_DIR = ../src
 U8TOSJ = u8tosj
 AS = has060
 ASFLAGS = -w2 -c3 -i./include
-LD ?= hlkx
+LD ?= hlk
 LDFLAGS =
 CV = cv
 
@@ -19,7 +19,8 @@ ifeq ($(findstring hlkx,$(LD)),hlkx)
 USE_HLKX = true
 endif
 
-OBJS = exectrace.o keepchk.o
+SRCS = exectrace.s keepchk.s startup.s
+OBJS = $(SRCS:.s=.o)
 DOCS = README.txt CHANGELOG.txt
 
 TARGET = exectrace.r
@@ -42,12 +43,8 @@ $(TARGET): $(TARGET:.r=.x)
 	$(CV) $< $@
 endif
 
-exectrace.o: exectrace.s startup.s
+%.o: %.s
 	$(AS) $(ASFLAGS) -o $@ $<
-
-keepchk.o: keepchk.s
-	$(AS) $(ASFLAGS) -o $@ $<
-
 
 $(DIST_ZIP): $(DOCS) $(TARGET)
 	rm -f $@
